@@ -1,28 +1,20 @@
 #!/usr/bin/env python3
 from functools import partial
-from typing import Dict, Any, List, Iterator, Callable, Optional, cast
+from typing import Dict, Any, List, Optional
 import requests
 import singer
 from singer import utils, Schema, metadata
 from singer.catalog import Catalog, CatalogEntry
+from . import client
+from .streams import groups, roles, users
+from .typing import JsonResult
 
 LOGGER = singer.get_logger()
 DEFAULT_CONFIG = {"page_size": 1000}
 REQUIRED_CONFIG_KEYS = ["access_token"]
-BASE_URL = "https://api.nikabot.com"
-MAX_API_PAGES = 10000
-
-JsonResult = Dict[str, Any]
 
 
-def fetch_swagger_definition() -> Any:
-    response = requests.get(f"{BASE_URL}/v2/api-docs?group=public")
-    response.raise_for_status()
-    swagger = response.json()
-    return swagger
-
-
-def get_catalog_entry(
+def make_catalog_entry(
     schema: Schema, stream_id: str, key_properties: List[str], replication_key: Optional[str] = None
 ) -> CatalogEntry:
     stream_metadata = metadata.get_standard_metadata(
@@ -44,56 +36,26 @@ def get_catalog_entry(
     return catalog_entry
 
 
-def get_user_catalog_entry(swagger: Any) -> CatalogEntry:
-    schema = Schema.from_dict(swagger["definitions"]["UserDTO"])
-    return get_catalog_entry(schema, "users", ["id"], "updated_at")
-
-
-def get_role_catalog_entry(swagger: Any) -> CatalogEntry:
-    schema = Schema.from_dict(swagger["definitions"]["RoleDTO"])
-    return get_catalog_entry(schema, "roles", ["id"])
-
-
 def discover() -> Catalog:
-    swagger = fetch_swagger_definition()
-    schemas = [get_user_catalog_entry(swagger), get_role_catalog_entry(swagger)]
+    swagger = client.fetch_swagger_definition()
+    schemas = [
+        users.get_catalog_entry(make_catalog_entry, swagger),
+        roles.get_catalog_entry(make_catalog_entry, swagger),
+        groups.get_catalog_entry(make_catalog_entry, swagger),
+    ]
     return Catalog(schemas)
-
-
-def fetch_one_page(session: requests.Session, page_size: str, page_number: int, url: str) -> JsonResult:
-    params = {"limit": page_size, "page": page_number}
-    response = session.get(url, params=params)
-    response.raise_for_status()
-    return cast(JsonResult, response.json())
-
-
-def fetch_all_pages(fetch: Callable[[int, str], JsonResult], url: str) -> Iterator[List[JsonResult]]:
-    for page_number in range(MAX_API_PAGES):
-        result = fetch(page_number, url)
-        if len(result["result"]) == 0:
-            break
-        yield result["result"]
-
-
-def get_user_records(fetch: Callable[[str], Iterator[List[JsonResult]]]) -> Iterator[List[JsonResult]]:
-    for page in fetch(f"{BASE_URL}/api/v1/users"):
-        yield page
-
-
-def get_role_records(fetch: Callable[[str], Iterator[List[JsonResult]]]) -> Iterator[List[JsonResult]]:
-    for page in fetch(f"{BASE_URL}/api/v1/roles"):
-        yield page
 
 
 def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> None:
     """ Sync data from tap source """
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {config['access_token']}"})
-    fetch_with_auth = partial(fetch_one_page, session, config["page_size"])
-    fetch_with_paging = partial(fetch_all_pages, fetch_with_auth)
+    fetch_with_auth = partial(client.fetch_one_page, session, config["page_size"])
+    fetch_with_paging = partial(client.fetch_all_pages, fetch_with_auth)
     streams = {
-        "users": get_user_records,
-        "roles": get_role_records,
+        "users": users.get_records,
+        "roles": roles.get_records,
+        "groups": groups.get_records,
     }
 
     # Loop over selected streams in catalog
