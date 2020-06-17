@@ -10,7 +10,7 @@ EMPTY_RESPONSE = '{"ok":true,"result":[]}'
 ROLES_RESPONSE = '{"ok":true,"result":[{"id":"d893ebf32d49c35c1d754774","team_id":"T034F9NPW","name":"0.5"},{"id":"cfabd9aa6f3e6381a716da58","team_id":"T034F9NPW","name":"0.1"}]}'
 
 
-def test_sync_roles_should_output_records(mock_stdout, requests_mock):
+def test_should_output_records(mock_stdout, requests_mock):
     requests_mock.get("https://api.nikabot.com/api/v1/roles?limit=1000&page=0", json=json.loads(ROLES_RESPONSE))
     requests_mock.get("https://api.nikabot.com/api/v1/roles?limit=1000&page=1", json=json.loads(EMPTY_RESPONSE))
     config = {"access_token": "my-access-token", "page_size": 1000}

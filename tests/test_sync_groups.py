@@ -10,7 +10,7 @@ EMPTY_RESPONSE = '{"ok":true,"result":[]}'
 GROUPS_RESPONSE = '{"ok":true,"result":[{"id":"f1b4b37cc2658672770b789f","team_id":"T034F9NPW","name":"TA Squad 5"},{"id":"3176700ac4f2203b825fae6c","team_id":"T034F9NPW","name":"Platform Toolkit"}]}'
 
 
-def test_sync_users_should_output_records(mock_stdout, requests_mock):
+def test_should_output_records(mock_stdout, requests_mock):
     requests_mock.get("https://api.nikabot.com/api/v1/groups?limit=1000&page=0", json=json.loads(GROUPS_RESPONSE))
     requests_mock.get("https://api.nikabot.com/api/v1/groups?limit=1000&page=1", json=json.loads(EMPTY_RESPONSE))
     config = {"access_token": "my-access-token", "page_size": 1000}

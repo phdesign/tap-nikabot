@@ -6,7 +6,7 @@ import singer
 from singer import utils, Schema, metadata
 from singer.catalog import Catalog, CatalogEntry
 from . import client
-from .streams import groups, roles, users
+from .streams import groups, roles, users, teams
 from .typing import JsonResult
 
 LOGGER = singer.get_logger()
@@ -42,6 +42,7 @@ def discover() -> Catalog:
         users.get_catalog_entry(make_catalog_entry, swagger),
         roles.get_catalog_entry(make_catalog_entry, swagger),
         groups.get_catalog_entry(make_catalog_entry, swagger),
+        teams.get_catalog_entry(make_catalog_entry, swagger),
     ]
     return Catalog(schemas)
 
@@ -56,6 +57,7 @@ def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> Non
         "users": users.get_records,
         "roles": roles.get_records,
         "groups": groups.get_records,
+        "teams": teams.get_records,
     }
 
     # Loop over selected streams in catalog
