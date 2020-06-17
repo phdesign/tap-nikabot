@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from functools import partial
-from typing import Dict, Any, List, Iterator
+from typing import Dict, Any, List, Iterator, Callable, Optional, cast
 import requests
 import singer
 from singer import utils, Schema, metadata
@@ -12,6 +12,8 @@ REQUIRED_CONFIG_KEYS = ["access_token"]
 BASE_URL = "https://api.nikabot.com"
 MAX_API_PAGES = 10000
 
+JsonResult = Dict[str, Any]
+
 
 def fetch_swagger_definition() -> Any:
     response = requests.get(f"{BASE_URL}/v2/api-docs?group=public")
@@ -20,7 +22,9 @@ def fetch_swagger_definition() -> Any:
     return swagger
 
 
-def get_catalog_entry(schema: Schema, stream_id: str, key_properties: List[str], replication_key: str = None) -> CatalogEntry:
+def get_catalog_entry(
+    schema: Schema, stream_id: str, key_properties: List[str], replication_key: Optional[str] = None
+) -> CatalogEntry:
     stream_metadata = metadata.get_standard_metadata(
         schema.to_dict(),
         stream_id,
@@ -56,28 +60,28 @@ def discover() -> Catalog:
     return Catalog(schemas)
 
 
-def _fetch(session: requests.Session, page_size: str, url: str, page_number: int) -> Any:
+def fetch_one_page(session: requests.Session, page_size: str, page_number: int, url: str) -> JsonResult:
     params = {"limit": page_size, "page": page_number}
     response = session.get(url, params=params)
     response.raise_for_status()
-    return response.json()
+    return cast(JsonResult, response.json())
 
 
-def fetch_all(fetch) -> Iterator[List[Dict[str, Any]]]:
+def fetch_all_pages(fetch: Callable[[int, str], JsonResult], url: str) -> Iterator[List[JsonResult]]:
     for page_number in range(MAX_API_PAGES):
-        result = fetch(page_number)
+        result = fetch(page_number, url)
         if len(result["result"]) == 0:
             break
         yield result["result"]
 
 
-def get_user_records(fetch) -> Iterator[List[Dict[str, Any]]]:
-    for page in fetch_all(partial(fetch, f"{BASE_URL}/api/v1/users")):
+def get_user_records(fetch: Callable[[str], Iterator[List[JsonResult]]]) -> Iterator[List[JsonResult]]:
+    for page in fetch(f"{BASE_URL}/api/v1/users"):
         yield page
 
 
-def get_role_records(fetch) -> Iterator[List[Dict[str, Any]]]:
-    for page in fetch_all(partial(fetch, f"{BASE_URL}/api/v1/roles")):
+def get_role_records(fetch: Callable[[str], Iterator[List[JsonResult]]]) -> Iterator[List[JsonResult]]:
+    for page in fetch(f"{BASE_URL}/api/v1/roles"):
         yield page
 
 
@@ -85,7 +89,8 @@ def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> Non
     """ Sync data from tap source """
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {config['access_token']}"})
-    fetch = partial(_fetch, session, config["page_size"])
+    fetch_with_auth = partial(fetch_one_page, session, config["page_size"])
+    fetch_with_paging = partial(fetch_all_pages, fetch_with_auth)
     streams = {
         "users": get_user_records,
         "roles": get_role_records,
@@ -106,7 +111,7 @@ def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> Non
 
         max_bookmark = ""
         stream = streams[selected_stream.tap_stream_id]
-        for rows in stream(fetch):
+        for rows in stream(fetch_with_paging):
             # write one or more rows to the stream:
             singer.write_records(selected_stream.tap_stream_id, rows)
             if bookmark_column:

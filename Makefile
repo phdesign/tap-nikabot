@@ -33,7 +33,7 @@ lint:
 	source $(VENV_ACTIVATE); \
 		black -l 120 tap_nikabot tests *.py; \
 		pylint --exit-zero tap_nikabot tests *.py; \
-		mypy --strict tap_nikabot
+		mypy --strict tap_nikabot || true
 
 test: lint
 	source $(VENV_ACTIVATE); \

@@ -14,7 +14,8 @@ disable=missing-docstring,
         no-self-use,
         duplicate-code,
         too-many-arguments,
-        line-too-long               # We're using black to auto format so no need
+        line-too-long,              # Black takes care of this
+        bad-continuation            # Black takes care of this
 
 
 [BASIC]
