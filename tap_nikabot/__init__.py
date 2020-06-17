@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from functools import partial
 from typing import Dict, Any, List, Iterator
 import requests
 import singer
@@ -55,28 +56,28 @@ def discover() -> Catalog:
     return Catalog(schemas)
 
 
-def fetch(session: requests.Session, page_size: str, url: str, page_number: int) -> Any:
+def _fetch(session: requests.Session, page_size: str, url: str, page_number: int) -> Any:
     params = {"limit": page_size, "page": page_number}
     response = session.get(url, params=params)
     response.raise_for_status()
     return response.json()
 
 
-def fetch_all(session: requests.Session, page_size: str, url: str) -> Iterator[List[Dict[str, Any]]]:
+def fetch_all(fetch) -> Iterator[List[Dict[str, Any]]]:
     for page_number in range(MAX_API_PAGES):
-        result = fetch(session, page_size, url, page_number)
+        result = fetch(page_number)
         if len(result["result"]) == 0:
             break
         yield result["result"]
 
 
-def get_user_records(session: requests.Session, page_size: str) -> Iterator[List[Dict[str, Any]]]:
-    for page in fetch_all(session, page_size, f"{BASE_URL}/api/v1/users"):
+def get_user_records(fetch) -> Iterator[List[Dict[str, Any]]]:
+    for page in fetch_all(partial(fetch, f"{BASE_URL}/api/v1/users")):
         yield page
 
 
-def get_role_records(session: requests.Session, page_size: str) -> Iterator[List[Dict[str, Any]]]:
-    for page in fetch_all(session, page_size, f"{BASE_URL}/api/v1/roles"):
+def get_role_records(fetch) -> Iterator[List[Dict[str, Any]]]:
+    for page in fetch_all(partial(fetch, f"{BASE_URL}/api/v1/roles")):
         yield page
 
 
@@ -84,6 +85,7 @@ def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> Non
     """ Sync data from tap source """
     session = requests.Session()
     session.headers.update({"Authorization": f"Bearer {config['access_token']}"})
+    fetch = partial(_fetch, session, config["page_size"])
     streams = {
         "users": get_user_records,
         "roles": get_role_records,
@@ -104,7 +106,7 @@ def sync(config: Dict[str, Any], state: Dict[str, Any], catalog: Catalog) -> Non
 
         max_bookmark = ""
         stream = streams[selected_stream.tap_stream_id]
-        for rows in stream(session, config["page_size"]):
+        for rows in stream(fetch):
             # write one or more rows to the stream:
             singer.write_records(selected_stream.tap_stream_id, rows)
             if bookmark_column:
