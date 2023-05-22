@@ -12,7 +12,7 @@ setup(
     keywords=["nikabot", "singer", "stitch", "tap"],
     classifiers=["Programming Language :: Python :: 3 :: Only"],
     py_modules=["tap_nikabot"],
-    install_requires=["singer-python==5.9.0", "requests==2.23.0", "backoff==1.8.0"],
+    install_requires=["singer-python==5.9.0", "requests==2.31.0", "backoff==1.8.0"],
     extras_require={
         "dev": [
             "pylint",
